@@ -1,6 +1,8 @@
 
 # coding: utf-8
 
+# A simple script exercising the Planet Python Client for API V1
+
 # Prereq:
 # Set up the PL_API_KEY as an environment variable in bash .profile
 # export PL_API_KEY='SOME_KEY'
