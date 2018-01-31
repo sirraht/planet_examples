@@ -1,58 +1,10 @@
 
 # coding: utf-8
 
-# A simple script exercising the Planet Python Client for API V1
-
-# Prereq:
-# Set up the PL_API_KEY as an environment variable in bash .profile
-# export PL_API_KEY='SOME_KEY'
-
-import json
-import argparse
-from planet import api as planetapi
-from sys import stdout
-
-
-def main(args):
-    geojsondata = getFile(args.geojson)
-    doSearch(geojsondata)
-
-
-def clean_dict(d):
-    for key, value in d.items():
-        if isinstance(value, list):
-            clean_list(value)
-        elif isinstance(value, dict):
-            clean_dict(value)
-        else:
-            newvalue = value.strip()
-            d[key] = newvalue
-
-
-def clean_list(l):
-    for index, item in enumerate(l):
-        if isinstance(item, dict):
-            clean_dict(item)
-        elif isinstance(item, list):
-            clean_list(item)
-        else:
-            if isinstance(item, str):
-                l[index] = item.strip()
-            else:
-                l[index] = item
-
-
-def getFile(file=None):
-    with open(file, 'r') as geojsondata:
-        data = json.load(geojsondata)
-    
-    # Remove whitespace and newline characters    
-   
-    clean_dict(data)
-    return data
-    
-    # GeoJSON should look like this:        
-    '''    
+# A simple program for exercising the Planet Python Client for API V1.
+# Requires geojson spatial filter and at least one "item_type".
+# GeoJSON should look like this:        
+'''    
     aoi = {
         "type": "Polygon",
         "coordinates": [
@@ -79,56 +31,153 @@ def getFile(file=None):
                 ]
             ]
         ]
-    }'''
+    }
+'''
+# Valid "item_types" include:
+
+# Prereq:
+# Set up the PL_API_KEY as an environment variable in bash .profile
+# export PL_API_KEY='SOME_KEY'
+
+import datetime
+import json
+import argparse
+from planet import api as planetapi
+from sys import stdout
+from string import Template
+
+def clean_dict(d):
+    
+    for key, value in d.items():
+        if isinstance(value, list):
+            clean_list(value)
+        elif isinstance(value, dict):
+            clean_dict(value)
+        else:
+            newvalue = value.strip()
+            d[key] = newvalue
+
+def clean_list(l):
+    
+    for index, item in enumerate(l):
+        if isinstance(item, dict):
+            clean_dict(item)
+        elif isinstance(item, list):
+            clean_list(item)
+        else:
+            if isinstance(item, str):
+                l[index] = item.strip()
+            else:
+                l[index] = item
 
 
-def doSearch(geojson=None):
+def getFile(file):
+    with open(file, 'r') as geojsondata:
+        data = json.load(geojsondata)
+    
+    # Remove whitespace and newline characters    
+   
+    clean_dict(data)
+    
+    return data
+   
 
-    # GeoJSON search geometry. Note "type" value needs capitalization
+def createDateFilter(dlt, dgt):
+    
+    
+    # Build Planet date range query json
+    try:
+        datetime.datetime.strptime(dlt, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Incorrect data format, should be YYY-MM-DD")    
+    try:
+        datetime.datetime.strptime(dgt, '%Y-%m-%d')
+    except ValueError:
+        raise ValueError("Incorrect data format, should be YYY-MM-DD") 
 
+    # Enforce dlt to be after dgt
+    if dlt < dgt:
+        raise ValueError("DateGreaterThan must be earlier in time than DateLessThan") 
+
+    # Build filter 
+    datequerylt = planetapi.filters.date_range('acquired', lt=dlt)
+   
+    datequerygt = planetapi.filters.date_range('acquired', gt=dgt)
+    
+    return datequerylt, datequerygt    
+
+
+def createFilter(geojsondata, cloudcover, dlt=None, dgt=None):
+   
     # Build Planet geo query json
 
-    geoquery = planetapi.filters.geom_filter(geojson)
-
-    # Build Planet date range query json
-
-    datequerygt = planetapi.filters.date_range('acquired', gt='2017-12-01')
-    datequerylt = planetapi.filters.date_range('acquired', lt='2017-12-31')
-
+    geoquery = planetapi.filters.geom_filter(geojsondata)
+    
     # Build range filter for specifying % cloud cover
+    cloud_filt = planetapi.filters.range_filter('cloud_cover', lt=cloudcover)
 
-    cloud_filt = planetapi.filters.range_filter('cloud_cover', lt=0.2)
+    datequerylt, datequerygt = createDateFilter(dlt, dgt)
 
     # Combine date query with geoquery as an 'And' filter
 
     filt = planetapi.filters.and_filter(
         datequerygt, datequerylt, cloud_filt, geoquery)
+   
+    return filt 
+
+
+def doSearch(filt, args):
 
     # Get client
 
     client = planetapi.ClientV1()
-
-    # we are requesting PlanetScope 4 Band imagery
-
-    item_types = ['PSScene4Band']
-
-    request = planetapi.filters.build_search_request(filt, item_types)
-    # this will cause an exception if there are any API related errors
+    # Build request; this will cause an exception if there are any API related errors
+    request = planetapi.filters.build_search_request(filt, args.satellite)
 
     results = client.quick_search(request)
 
+    if args.doprint == True:
+        print("Results from:", ", ".join(args.satellite)) 
+
+    outbuffer = []
     # items_iter returns an iterator over API response pages
     for item in results.items_iter(limit=None):
         # each item is a GeoJSON feature
-        stdout.write('%s\n' % item['id'])
+        if args.doprint == True: 
+            stdout.write('%s\n' % item['id'])
+            outbuffer.append(item)
+
+        else:
+            outbuffer.append(item)
+ 
+    with open('./result.json','w') as requestout:
+        json.dump(outbuffer, requestout, sort_keys=True, indent=4, ensure_ascii=False)
+
+
+def main(args):
+    
+    geojsondata = getFile(args.geojson)
+
+    filt = createFilter(geojsondata, cloudcover=args.cloudcover, dlt=args.datelessthan, dgt=args.dategreaterthan)
+    
+    doSearch(filt, args)
 
 
 if __name__ == "__main__":
+        
+    now = datetime.datetime.now()
+    today = now.strftime("%Y-%m-%d")    
+    
     parser = argparse.ArgumentParser(description='planet downloader')
-    parser.add_argument('geojson', help='path to GeoJSON file')
-
+    parser.add_argument('geojson', help='Path to GeoJSON file')
+    group = parser.add_mutually_exclusive_group() 
+    group.add_argument('--noprint', help='Suppress printing results', action='store_true') 
+    group.add_argument('--doprint', help='Print item IDs to stdout', action='store_true') 
+    parser.add_argument('-s', '--satellite', help='Item types indicating satellite platforms to search, e.g. -s "SkySatScene" "PSScene4Band".', type=str, nargs='*', default=["PSScene4Band"])
+    parser.add_argument('-c', '--cloudcover', help='Max percentage cloud cover, float between 0 and 1', default=1.0, type=float)
+    parser.add_argument('--datelessthan', help='Less than date', default=today, type=str)     
+    parser.add_argument('--dategreaterthan', help='Greater than date', default="2000-01-01", type=str)  
+    parser.set_defaults()    
     args = parser.parse_args()
-
-
-
+    
     main(args)
