@@ -33,8 +33,6 @@
         ]
     }
 '''
-# Valid "item_types" include:
-
 # Prereq:
 # Set up the PL_API_KEY as an environment variable in bash .profile
 # export PL_API_KEY='SOME_KEY'
@@ -44,10 +42,8 @@ import json
 import argparse
 from planet import api as planetapi
 from sys import stdout
-from string import Template
 
 def clean_dict(d):
-    
     for key, value in d.items():
         if isinstance(value, list):
             clean_list(value)
@@ -57,8 +53,8 @@ def clean_dict(d):
             newvalue = value.strip()
             d[key] = newvalue
 
+
 def clean_list(l):
-    
     for index, item in enumerate(l):
         if isinstance(item, dict):
             clean_dict(item)
@@ -83,8 +79,6 @@ def getFile(file):
    
 
 def createDateFilter(dlt, dgt):
-    
-    
     # Build Planet date range query json
     try:
         datetime.datetime.strptime(dlt, '%Y-%m-%d')
@@ -108,7 +102,6 @@ def createDateFilter(dlt, dgt):
 
 
 def createFilter(geojsondata, cloudcover, dlt=None, dgt=None):
-   
     # Build Planet geo query json
 
     geoquery = planetapi.filters.geom_filter(geojsondata)
@@ -170,10 +163,10 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description='planet downloader')
     parser.add_argument('geojson', help='Path to GeoJSON file')
+    parser.add_argument('-s', '--satellite', help='Item types indicating satellite platforms to search, e.g. -s "SkySatScene" "PSScene4Band".', type=str, nargs='*', default=["PSScene4Band"])
     group = parser.add_mutually_exclusive_group() 
     group.add_argument('--noprint', help='Suppress printing results', action='store_true') 
     group.add_argument('--doprint', help='Print item IDs to stdout', action='store_true') 
-    parser.add_argument('-s', '--satellite', help='Item types indicating satellite platforms to search, e.g. -s "SkySatScene" "PSScene4Band".', type=str, nargs='*', default=["PSScene4Band"])
     parser.add_argument('-c', '--cloudcover', help='Max percentage cloud cover, float between 0 and 1', default=1.0, type=float)
     parser.add_argument('--datelessthan', help='Less than date', default=today, type=str)     
     parser.add_argument('--dategreaterthan', help='Greater than date', default="2000-01-01", type=str)  
