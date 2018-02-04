@@ -1,10 +1,11 @@
-
 # coding: utf-8
 
-# A simple program for exercising the Planet Python Client for API V1.
+# A simple program for executing "quick searches" exercising the
+# Planet Python Client for API V1.
+
 # Requires geojson spatial filter and at least one "item_type".
 # GeoJSON should look like this:        
-'''    
+"""
     aoi = {
         "type": "Polygon",
         "coordinates": [
@@ -32,9 +33,7 @@
             ]
         ]
     }
-'''
-# Valid "item_types" include:
-
+"""
 # Prereq:
 # Set up the PL_API_KEY as an environment variable in bash .profile
 # export PL_API_KEY='SOME_KEY'
@@ -44,10 +43,8 @@ import json
 import argparse
 from planet import api as planetapi
 from sys import stdout
-from string import Template
-
+"""
 def clean_dict(d):
-    
     for key, value in d.items():
         if isinstance(value, list):
             clean_list(value)
@@ -57,8 +54,8 @@ def clean_dict(d):
             newvalue = value.strip()
             d[key] = newvalue
 
+
 def clean_list(l):
-    
     for index, item in enumerate(l):
         if isinstance(item, dict):
             clean_dict(item)
@@ -70,21 +67,21 @@ def clean_list(l):
             else:
                 l[index] = item
 
+"""
 
-def getFile(file):
-    with open(file, 'r') as geojsondata:
-        data = json.load(geojsondata)
+
+def get_file(file):
+    with open(file, 'r') as geo_json_data:
+        data = json.load(geo_json_data)
     
     # Remove whitespace and newline characters    
    
-    clean_dict(data)
+    # clean_dict(data)
     
     return data
    
 
-def createDateFilter(dlt, dgt):
-    
-    
+def create_date_filter(dlt, dgt):
     # Build Planet date range query json
     try:
         datetime.datetime.strptime(dlt, '%Y-%m-%d')
@@ -100,67 +97,73 @@ def createDateFilter(dlt, dgt):
         raise ValueError("DateGreaterThan must be earlier in time than DateLessThan") 
 
     # Build filter 
-    datequerylt = planetapi.filters.date_range('acquired', lt=dlt)
+    date_query_lt = planetapi.filters.date_range('acquired', lte=dlt)
    
-    datequerygt = planetapi.filters.date_range('acquired', gt=dgt)
+    date_query_gt = planetapi.filters.date_range('acquired', gte=dgt)
     
-    return datequerylt, datequerygt    
+    return date_query_lt, date_query_gt
 
 
-def createFilter(geojsondata, cloudcover, dlt=None, dgt=None):
-   
+def create_filter(geojson, arguments):
     # Build Planet geo query json
 
-    geoquery = planetapi.filters.geom_filter(geojsondata)
+    geo_query = planetapi.filters.geom_filter(geojson)
     
     # Build range filter for specifying % cloud cover
-    cloud_filt = planetapi.filters.range_filter('cloud_cover', lt=cloudcover)
+    cloud_filter = planetapi.filters.range_filter('cloud_cover', lt=arguments.cloudcover)
 
-    datequerylt, datequerygt = createDateFilter(dlt, dgt)
+    # Build permission filter
+    #permission_filter = planetapi.filters.permission_filter('assets.analytic:download')
+    permission_filter = planetapi.filters.permission_filter(arguments.permissions)
 
-    # Combine date query with geoquery as an 'And' filter
+    # Build range filter for specifying % usable pixels
+    # usable_filt = planetapi.filters.range_filter('usable_data', lt=arguments.usable)
 
-    filt = planetapi.filters.and_filter(
-        datequerygt, datequerylt, cloud_filt, geoquery)
+    date_query_lt, date_query_gt = create_date_filter(arguments.datelessthan,
+                                                      arguments.dategreaterthan)
+
+    # Combine query filters with geoquery as 'And' filter
+    pl_filter = planetapi.filters.and_filter(
+        date_query_gt, date_query_lt, cloud_filter, geo_query, permission_filter)
    
-    return filt 
+    return pl_filter
 
 
-def doSearch(filt, args):
+def do_search(pl_filter, arguments):
 
     # Get client
 
     client = planetapi.ClientV1()
     # Build request; this will cause an exception if there are any API related errors
-    request = planetapi.filters.build_search_request(filt, args.satellite)
+    request = planetapi.filters.build_search_request(pl_filter, arguments.satellite)
 
     results = client.quick_search(request)
 
-    if args.doprint == True:
-        print("Results from:", ", ".join(args.satellite)) 
+    if args.doprint is True:
+        print("Results from:", ", ".join(arguments.satellite))
 
-    outbuffer = []
+    out_buffer = []
     # items_iter returns an iterator over API response pages
     for item in results.items_iter(limit=None):
         # each item is a GeoJSON feature
-        if args.doprint == True: 
+        if arguments.doprint is True:
             stdout.write('%s\n' % item['id'])
-            outbuffer.append(item)
+            out_buffer.append(item)
 
         else:
-            outbuffer.append(item)
+            out_buffer.append(item)
  
-    with open('./result.json','w') as requestout:
-        json.dump(outbuffer, requestout, sort_keys=True, indent=4, ensure_ascii=False)
+    with open('./result.json', 'w') as request_out:
+        json.dump(out_buffer, request_out, sort_keys=True, indent=4, ensure_ascii=False)
 
 
-def main(args):
+def main(arguments):
     
-    geojsondata = getFile(args.geojson)
+    geo_json_data = get_file(arguments.geojson)
 
-    filt = createFilter(geojsondata, cloudcover=args.cloudcover, dlt=args.datelessthan, dgt=args.dategreaterthan)
+    pl_filter = create_filter(geo_json_data, arguments)
     
-    doSearch(filt, args)
+    do_search(pl_filter, arguments)
 
 
 if __name__ == "__main__":
@@ -169,15 +172,41 @@ if __name__ == "__main__":
     today = now.strftime("%Y-%m-%d")    
     
     parser = argparse.ArgumentParser(description='planet downloader')
-    parser.add_argument('geojson', help='Path to GeoJSON file')
-    group = parser.add_mutually_exclusive_group() 
-    group.add_argument('--noprint', help='Suppress printing results', action='store_true') 
-    group.add_argument('--doprint', help='Print item IDs to stdout', action='store_true') 
-    parser.add_argument('-s', '--satellite', help='Item types indicating satellite platforms to search, e.g. -s "SkySatScene" "PSScene4Band".', type=str, nargs='*', default=["PSScene4Band"])
-    parser.add_argument('-c', '--cloudcover', help='Max percentage cloud cover, float between 0 and 1', default=1.0, type=float)
-    parser.add_argument('--datelessthan', help='Less than date', default=today, type=str)     
-    parser.add_argument('--dategreaterthan', help='Greater than date', default="2000-01-01", type=str)  
-    parser.set_defaults()    
+    parser.add_argument('geojson',
+                        help='Path to GeoJSON file')
+    parser.add_argument('-s', '--satellite',
+                        help='Item types indicating satellite platforms to search, '
+                             'e.g. -s "SkySatScene" "PSScene4Band".',
+                        type=str,
+                        nargs='*',
+                        default=["PSScene4Band"])
+    group1 = parser.add_mutually_exclusive_group()
+    group1.add_argument('--noprint',
+                        help='Suppress printing results',
+                        action='store_true')
+    group1.add_argument('--doprint',
+                        help='Print item IDs to stdout',
+                        action='store_true')
+    parser.add_argument('--cloudcover',
+                        help='Max percentage cloud cover, float between 0 and 1',
+                        default=1.0,
+                        type=float)
+    parser.add_argument('--datelessthan',
+                        help='Less than or equal to date',
+                        default=today,
+                        type=str)
+    parser.add_argument('--dategreaterthan',
+                        help='Greater than or equal to date',
+                        default="2000-01-01",
+                        type=str)
+    parser.add_argument('--permissions',
+                        help='Download permission level "assets:download", '
+                             '"assets.visual:download", '
+                             'or "assets.analytic:download"',
+                        default="assets:download",
+                        type=str)
+
+    parser.set_defaults()
     args = parser.parse_args()
     
     main(args)
