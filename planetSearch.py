@@ -43,41 +43,12 @@ import json
 import argparse
 from planet import api as planetapi
 from sys import stdout
-"""
-def clean_dict(d):
-    for key, value in d.items():
-        if isinstance(value, list):
-            clean_list(value)
-        elif isinstance(value, dict):
-            clean_dict(value)
-        else:
-            newvalue = value.strip()
-            d[key] = newvalue
-
-def clean_list(l):
-    
-    for index, item in enumerate(l):
-        if isinstance(item, dict):
-            clean_dict(item)
-        elif isinstance(item, list):
-            clean_list(item)
-        else:
-            if isinstance(item, str):
-                l[index] = item.strip()
-            else:
-                l[index] = item
-
-"""
 
 
 def get_file(file):
     with open(file, 'r') as geo_json_data:
         data = json.load(geo_json_data)
-    
-    # Remove whitespace and newline characters    
-   
-    # clean_dict(data)
-    
+
     return data
    
 
@@ -113,12 +84,36 @@ def create_filter(geojson, arguments):
     cloud_filter = planetapi.filters.range_filter('cloud_cover', lt=arguments.cloudcover)
 
     # Build permission filter
-    #permission_filter = planetapi.filters.permission_filter('assets.analytic:download')
     permission_filter = planetapi.filters.permission_filter(arguments.permissions)
 
-    # Build range filter for specifying % usable pixels
-    # usable_filt = planetapi.filters.range_filter('usable_data', lt=arguments.usable)
-
+    # Other interesting property fields to filter on...
+    """
+    "properties": {cf
+        "acquired": "2017-12-28T18:05:54.494401Z",
+        "anomalous_pixels": 0,
+        "cloud_cover": 0.12,
+        "columns": 9007,
+        "epsg_code": 32611,
+        "ground_control": true,
+        "gsd": 3.9,
+        "instrument": "PS2",
+        "item_type": "PSScene4Band",
+        "origin_x": 232782,
+        "origin_y": 4117095,
+        "pixel_resolution": 3,
+        "provider": "planetscope",
+        "published": "2017-12-29T00:21:05Z",
+        "quality_category": "standard",
+        "rows": 4721,
+        "satellite_id": "0e19",
+        "strip_id": "1021774",
+        "sun_azimuth": 151.4,
+        "sun_elevation": 24.1,
+        "updated": "2017-12-29T09:49:08Z",
+        "usable_data": 0,
+        "view_angle": 4.8
+    },
+    """
     date_query_lt, date_query_gt = create_date_filter(arguments.datelessthan,
                                                       arguments.dategreaterthan)
 
@@ -171,7 +166,10 @@ if __name__ == "__main__":
     now = datetime.datetime.now()
     today = now.strftime("%Y-%m-%d")    
     
-    parser = argparse.ArgumentParser(description='planet downloader')
+    parser = argparse.ArgumentParser(description='Planet data downloader. A simple '
+                                                 'program for executing "quick searches" '
+                                                 'exercising the Planet Python Client '
+                                                 'for API V1.')
     parser.add_argument('geojson',
                         help='Path to GeoJSON file')
     parser.add_argument('-s', '--satellite',
